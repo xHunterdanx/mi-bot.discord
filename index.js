@@ -1212,4 +1212,54 @@ client.on('interactionCreate', async interaction => {
 
   if (accion === 'cancelar') {
     if (!esAdmin) {
-      return interaction.reply({ content: '
+      return interaction.reply({ content: '❌ Only administrators can cancel orders.', flags: MessageFlags.Ephemeral });
+    }
+
+    const [, userIdConfirm, pedidoMessageId] = interaction.customId.split('_');
+    const pedido = pedidosPendientes.get(userIdConfirm);
+
+    if (!pedido) {
+      return interaction.reply({ content: '❌ Order data not found.', flags: MessageFlags.Ephemeral });
+    }
+
+    const channel = await client.channels.fetch(interaction.channelId);
+    const pedidoMessage = await channel.messages.fetch(pedido.pedidoMessageId).catch(() => null);
+
+    if (!pedidoMessage) {
+      return interaction.reply({ content: '❌ The order message was not found.', flags: MessageFlags.Ephemeral });
+    }
+
+    const currency = pedido.items[0].currency;
+    const resumen = pedido.items.map(p => {
+      const price = currency === 'UEC' ? `${formatUEC(p.producto.precioUEC)} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
+      return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
+    }).join('\n');
+
+    await pedidoMessage.edit({
+      content: `📥 **${interaction.user.tag}** placed an order (using ${currency}):\n${resumen}\n**Status:** Canceled (Not Delivered)`,
+      components: []
+    });
+
+    try {
+      const user = await client.users.fetch(userIdConfirm);
+      await user.send(`📦 **Order Canceled**\nYour order has been canceled by the administrator. Here are the details:\n${resumen}\nIf you have any questions, please contact the support team.`);
+    } catch (err) {
+      console.error(`Could not send DM to user ${userIdConfirm}:`, err);
+    }
+
+    pedidosPendientes.delete(userIdConfirm);
+    return interaction.reply({ content: '✅ Order canceled.', flags: MessageFlags.Ephemeral });
+  }
+});
+
+// Express server to keep the bot alive on Render
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.send('Bot running successfully.');
+});
+
+app.listen(3000, () => {
+  console.log('Web server started on port 3000');
+});
