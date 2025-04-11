@@ -35,23 +35,31 @@ let salesEmbedMessageId = null;
 
 // Map of catalog IDs to their human-readable names
 const catalogoNombres = {
-  'catalogo1': 'Ships',
-  'catalogo2': 'Components',
+  'catalogo1': '(Reserved for future use)', // Dejamos catalogo1 vacío para el futuro
+  'catalogo2': 'Ships', // Renombrado de catalogo1 a catalogo2
   'catalogo3': 'Money',
   'catalogo4': 'Weapons Hard Point',
   'catalogo5': 'Paintjobs',
   'catalogo6': 'Resources',
-  'catalogo7': 'Gear'
+  'catalogo7': 'Gear',
+  'catalogo8': 'PowerPlants',
+  'catalogo9': 'Quantum Drive',
+  'catalogo10': 'Coolers',
+  'catalogo11': 'Shields'
 };
 
 const canalesCatalogos = {
-  'catalogo1': '1358353542599016478',
-  'catalogo2': '1358353602623574196',
+  'catalogo1': '', // Dejamos vacío para el futuro
+  'catalogo2': '1358353542599016478', // Antes era catalogo1, ahora es catalogo2 (Ships)
   'catalogo3': '1358371748826841159',
   'catalogo4': '1358353660152643769',
   'catalogo5': '1358353721498665032',
   'catalogo6': '1358353787512946725',
   'catalogo7': '1358353828864594050',
+  'catalogo8': '1360199607619158056', // PowerPlants
+  'catalogo9': '1360199752150421576', // Quantum Drive
+  'catalogo10': '1360199830986559489', // Coolers
+  'catalogo11': '1360200069768417280' // Shields
 };
 
 const Producto = require('./models/producto');
@@ -263,6 +271,21 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
   const esAdmin = message.member.permissions.has('Administrator');
 
+  // Command: !borrarProductos
+  if (message.content.startsWith('!borrarProductos')) {
+    if (!esAdmin) {
+      return message.reply('❌ Only administrators can delete all products.');
+    }
+
+    try {
+      const deletedCount = await Producto.deleteMany({});
+      return message.reply(`🗑️ Successfully deleted ${deletedCount.deletedCount} products from the database.`);
+    } catch (err) {
+      console.error(err);
+      return message.reply('❌ Error deleting products from the database.');
+    }
+  }
+
   // Command: !subirExcel [publicar]
   if (message.content.startsWith('!subirExcel')) {
     if (!esAdmin) {
@@ -319,8 +342,8 @@ client.on('messageCreate', async (message) => {
           continue; // Saltar esta fila sin generar un error
         }
 
-        if (!canalesCatalogos[catalogo]) {
-          errores.push(`Row ${jsonData.indexOf(row) + 2}: Invalid catalog (${catalogo}). Use: ${Object.values(catalogoNombres).join(', ')}`);
+        if (!canalesCatalogos[catalogo] || canalesCatalogos[catalogo] === '') {
+          errores.push(`Row ${jsonData.indexOf(row) + 2}: Invalid catalog (${catalogo}). Use: ${Object.values(catalogoNombres).filter(name => name !== '(Reserved for future use)').join(', ')}`);
           continue;
         }
         if (!imagen.startsWith('http')) {
@@ -409,8 +432,8 @@ client.on('messageCreate', async (message) => {
       catalogo = Object.keys(catalogoNombres).find(key => catalogoNombres[key].toLowerCase() === catalogoNameLower);
     }
 
-    if (!catalogo) {
-      return message.reply(`❌ Invalid catalog. Use: ${Object.values(catalogoNombres).join(', ')}`);
+    if (!catalogo || canalesCatalogos[catalogo] === '') {
+      return message.reply(`❌ Invalid catalog. Use: ${Object.values(catalogoNombres).filter(name => name !== '(Reserved for future use)').join(', ')}`);
     }
 
     const result = await publishProducts(catalogo);
@@ -424,7 +447,7 @@ client.on('messageCreate', async (message) => {
     let catalogo;
 
     if (!catalogoInput) {
-      return message.reply(`❌ You must specify a valid catalog. Example: \`!nuevo Ships\`\nAvailable catalogs: ${Object.values(catalogoNombres).join(', ')}`);
+      return message.reply(`❌ You must specify a valid catalog. Example: \`!nuevo Ships\`\nAvailable catalogs: ${Object.values(catalogoNombres).filter(name => name !== '(Reserved for future use)').join(', ')}`);
     }
 
     if (canalesCatalogos[catalogoInput]) {
@@ -434,8 +457,8 @@ client.on('messageCreate', async (message) => {
       catalogo = Object.keys(catalogoNombres).find(key => catalogoNombres[key].toLowerCase() === catalogoNameLower);
     }
 
-    if (!catalogo) {
-      return message.reply(`❌ Invalid catalog. Use: ${Object.values(catalogoNombres).join(', ')}`);
+    if (!catalogo || canalesCatalogos[catalogo] === '') {
+      return message.reply(`❌ Invalid catalog. Use: ${Object.values(catalogoNombres).filter(name => name !== '(Reserved for future use)').join(', ')}`);
     }
 
     estadosFormulario.set(message.author.id, {
