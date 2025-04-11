@@ -66,9 +66,14 @@ const Producto = require('./models/producto');
 const Venta = require('./models/venta');
 const estadosFormulario = new Map();
 
-// Helper function to format numbers with "k" for UEC
+// Helper function to format numbers with "k" or "M" for UEC
 function formatUEC(value) {
-  return `${(value / 1000).toFixed(value < 1000 ? 1 : 0)}k`;
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}M`;
+  } else if (value >= 1000) {
+    return `${(value / 1000).toFixed(0)}k`;
+  }
+  return value.toString();
 }
 
 // Helper function to format USD (integer if .00, otherwise up to 2 decimals)
@@ -203,7 +208,7 @@ async function publishProducts(catalogo) {
       .setTitle(producto.nombre)
       .setDescription(producto.descripcion)
       .addFields(
-        { name: 'Price in UEC', value: producto.precioUEC === 0 ? 'Not available' : producto.precioUEC.toLocaleString() + ' UEC', inline: true },
+        { name: 'Price in UEC', value: producto.precioUEC === 0 ? 'Not available' : formatUEC(producto.precioUEC) + ' UEC', inline: true },
         { name: 'Price in USD', value: producto.precioUSD === 0 ? 'Not available' : '$' + formatUSD(producto.precioUSD), inline: true },
         { name: 'Status', value: producto.enStock ? 'In Stock ✅' : 'Out of Stock ❌', inline: true }
       )
@@ -642,7 +647,11 @@ client.on('messageCreate', async (message) => {
 
     const deliveredItems = items.filter(item => entregados.includes(item.producto.nombre));
 
-    const resumen = items.map(p => `• **${p.producto.nombre}** x${p.cantidad} - ${p.producto.precioUEC.toLocaleString()} UEC / $${p.producto.precioUSD}`).join('\n');
+    const resumen = items.map(p => {
+      const price = p.currency === 'UEC' ? `${formatUEC(p.producto.precioUEC)} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
+      return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
+    }).join('\n');
+
     await pedidoMessage.edit({
       content: `📥 **${pedidoMessage.content.split(' ')[1]}** placed an order:\n${resumen}\n**Status:** ${estadoTexto}${noEntregados.length > 0 ? ` (${noEntregados.map(item => item.producto.nombre).join(', ')} not delivered)` : ''}`,
       components: []
@@ -663,7 +672,10 @@ client.on('messageCreate', async (message) => {
     if (noEntregados.length > 0) {
       const canalAdmins = await client.channels.fetch('1358361940602257601');
       if (canalAdmins && canalAdmins.isTextBased()) {
-        const resumenNoEntregados = noEntregados.map(p => `• **${p.producto.nombre}** x${p.cantidad} - ${p.producto.precioUEC.toLocaleString()} UEC / $${p.producto.precioUSD}`).join('\n');
+        const resumenNoEntregados = noEntregados.map(p => {
+          const price = p.currency === 'UEC' ? `${formatUEC(p.producto.precioUEC)} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
+          return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
+        }).join('\n');
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`confirmarTotal_${userId}_${pedidoMessage.id}`)
@@ -707,6 +719,8 @@ client.on('messageCreate', async (message) => {
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
+
+  console.log(`Botón presionado: ${interaction.customId}`);
 
   const userId = interaction.user.id;
   const [accion, ...rest] = interaction.customId.split('_');
@@ -766,6 +780,7 @@ client.on('interactionCreate', async interaction => {
 
   const producto = await Producto.findOne({ nombre: nombreProducto });
   if (!producto && !['confirmarTotal', 'confirmarParcial', 'cancelar', 'notificar'].includes(accion)) {
+    console.log(`Producto no encontrado: ${nombreProducto}`);
     return interaction.reply({ content: '❌ Product not found.', flags: MessageFlags.Ephemeral });
   }
 
@@ -871,7 +886,7 @@ client.on('interactionCreate', async interaction => {
         new ButtonBuilder()
           .setCustomId(`notificar_${producto.nombre}_${interaction.message.id}`)
           .setLabel('📢 Notify Availability')
-          .setStyle(ButtonStyle.Primary)
+          .set的基本Style(ButtonStyle.Primary)
       );
 
       const solicitudMessage = await canalAdmins.send({
@@ -965,30 +980,34 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (accion === 'checkout_uec' || accion === 'checkout_usd') {
-    await interaction.deferReply({ ephemeral: true });
-
-    if (!carritos.has(userId)) {
-      carritos.set(userId, {});
-    }
-
-    const carrito = carritos.get(userId);
-    const items = Object.values(carrito);
-
-    if (items.length === 0) {
-      return interaction.editReply({ content: '🛒 Your cart is empty.' });
-    }
-
-    // Agregar la moneda seleccionada a los items del carrito
-    items.forEach(item => {
-      item.currency = currency;
-    });
-
-    const resumen = items.map(p => {
-      const price = currency === 'UEC' ? `${p.producto.precioUEC.toLocaleString()} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
-      return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
-    }).join('\n');
-
     try {
+      console.log(`Intentando comprar con ${currency} para el usuario ${userId}`);
+      await interaction.deferReply({ ephemeral: true });
+
+      if (!carritos.has(userId)) {
+        carritos.set(userId, {});
+      }
+
+      const carrito = carritos.get(userId);
+      const items = Object.values(carrito);
+
+      if (items.length === 0) {
+        console.log(`Carrito vacío para el usuario ${userId}`);
+        return interaction.editReply({ content: '🛒 Your cart is empty.' });
+      }
+
+      // Agregar la moneda seleccionada a los items del carrito
+      items.forEach(item => {
+        item.currency = currency;
+      });
+
+      const resumen = items.map(p => {
+        const price = currency === 'UEC' ? `${formatUEC(p.producto.precioUEC)} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
+        return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
+      }).join('\n');
+
+      console.log(`Resumen de la compra para ${userId}: ${resumen}`);
+
       await interaction.user.send({ content: `🧾 Your order (using ${currency}):\n${resumen}` });
 
       const canalAdmins = await client.channels.fetch('1358361940602257601');
@@ -1017,6 +1036,8 @@ client.on('interactionCreate', async interaction => {
           items: items.map(item => ({ producto: item.producto, cantidad: item.cantidad, currency })),
           pedidoMessageId: pedidoMessage.id
         });
+      } else {
+        console.error('No se pudo encontrar o acceder al canal de admins (1358361940602257601).');
       }
 
       carritos.delete(userId);
@@ -1054,7 +1075,7 @@ client.on('interactionCreate', async interaction => {
 
       return interaction.editReply({ content: `✅ Order submitted using ${currency}. Check your private messages.` });
     } catch (err) {
-      console.error(err);
+      console.error(`Error al procesar la compra para ${userId}:`, err);
       return interaction.editReply({ content: '❌ I couldn’t send you a private message. Do you have DMs enabled?' });
     }
   }
@@ -1080,7 +1101,7 @@ client.on('interactionCreate', async interaction => {
 
     const currency = pedido.items[0].currency;
     const resumen = pedido.items.map(p => {
-      const price = currency === 'UEC' ? `${p.producto.precioUEC.toLocaleString()} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
+      const price = currency === 'UEC' ? `${formatUEC(p.producto.precioUEC)} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
       return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
     }).join('\n');
 
@@ -1154,7 +1175,7 @@ client.on('interactionCreate', async interaction => {
 
     const currency = pedido.items[0].currency;
     const resumen = pedido.items.map(p => {
-      const price = currency === 'UEC' ? `${p.producto.precioUEC.toLocaleString()} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
+      const price = currency === 'UEC' ? `${formatUEC(p.producto.precioUEC)} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
       return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
     }).join('\n');
 
