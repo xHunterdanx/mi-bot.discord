@@ -73,7 +73,7 @@ function formatUEC(value) {
   if (numValue >= 1000000) {
     return `${(numValue / 1000000).toFixed(1)}M`;
   } else if (numValue >= 1000) {
-    return `${(numValue / 1000).toFixed(1)}k`; // Cambiado a .toFixed(1) para mostrar 0.8k
+    return `${(numValue / 1000).toFixed(0)}k`; // Mostrar como 800k
   }
   return numValue.toString();
 }
@@ -387,7 +387,7 @@ client.on('messageCreate', async (message) => {
         const nombre = row['nombre']?.toString().trim();
         const descripcion = row['descripcion']?.toString().trim();
         const imagen = row['imagen']?.toString().trim();
-        const precioUEC = parseInt(row['precioUEC']) || 0; // Tratar vacío como 0
+        const precioUEC = (parseInt(row['precioUEC']) || 0) * 1000; // Multiplicar por 1000: 800 → 800,000
         const precioUSD = parseFloat(row['precioUSD']) || 0; // Tratar vacío como 0
         const enStockRaw = row['enStock']?.toString().trim();
         const enStock = enStockRaw && (enStockRaw.toLowerCase() === 'sí' || enStockRaw.toLowerCase() === 'si' || enStockRaw.toLowerCase() === 'true' || enStockRaw.toLowerCase() === 'yes' || enStockRaw === '1');
@@ -634,7 +634,7 @@ client.on('messageCreate', async (message) => {
   }
 
   if (paso === 'uec') {
-    const valor = parseInt(message.content.replace(/[^0-9]/g, '')) || 0;
+    const valor = (parseInt(message.content.replace(/[^0-9]/g, '')) || 0) * 1000; // Multiplicar por 1000
     datos.precioUEC = valor;
     estadosFormulario.set(message.author.id, { paso: 'usd', datos });
     return message.reply('💵 What is the **price in USD**? (Enter 0 if not available in USD)');
@@ -1212,53 +1212,4 @@ client.on('interactionCreate', async interaction => {
 
   if (accion === 'cancelar') {
     if (!esAdmin) {
-      return interaction.reply({ content: '❌ Only administrators can cancel orders.', flags: MessageFlags.Ephemeral });
-    }
-
-    const [, userIdConfirm, pedidoMessageId] = interaction.customId.split('_');
-    const pedido = pedidosPendientes.get(userIdConfirm);
-
-    if (!pedido) {
-      return interaction.reply({ content: '❌ Order data not found.', flags: MessageFlags.Ephemeral });
-    }
-
-    const channel = await client.channels.fetch(interaction.channelId);
-    const pedidoMessage = await channel.messages.fetch(pedido.pedidoMessageId).catch(() => null);
-
-    if (!pedidoMessage) {
-      return interaction.reply({ content: '❌ The order message was not found.', flags: MessageFlags.Ephemeral });
-    }
-
-    const currency = pedido.items[0].currency;
-    const resumen = pedido.items.map(p => {
-      const price = currency === 'UEC' ? `${formatUEC(p.producto.precioUEC)} UEC` : `$${formatUSD(p.producto.precioUSD)}`;
-      return `• **${p.producto.nombre}** x${p.cantidad} - ${price}`;
-    }).join('\n');
-
-    await pedidoMessage.edit({
-      content: `📥 **${interaction.user.tag}** placed an order (using ${currency}):\n${resumen}\n**Status:** Canceled (Not Delivered)`,
-      components: []
-    });
-
-    try {
-      const user = await client.users.fetch(userIdConfirm);
-      await user.send(`📦 **Order Canceled**\nYour order has been canceled by the administrator. Here are the details:\n${resumen}\nIf you have any questions, please contact the support team.`);
-    } catch (err) {
-      console.error(`Could not send DM to user ${userIdConfirm}:`, err);
-    }
-
-    pedidosPendientes.delete(userIdConfirm);
-    return interaction.reply({ content: '✅ Order canceled.', flags: MessageFlags.Ephemeral });
-  }
-});
-
-const express = require('express');
-const app = express();
-
-app.get('/', (req, res) => {
-  res.send('Bot running successfully.');
-});
-
-app.listen(3000, () => {
-  console.log('Web server started on port 3000');
-});
+      return interaction.reply({ content: '
