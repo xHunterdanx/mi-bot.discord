@@ -68,17 +68,21 @@ const estadosFormulario = new Map();
 
 // Helper function to format numbers with "k" or "M" for UEC
 function formatUEC(value) {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(1)}M`;
-  } else if (value >= 1000) {
-    return `${(value / 1000).toFixed(0)}k`;
+  const numValue = Number(value); // Asegurarse de que el valor sea un número
+  if (isNaN(numValue)) return "0";
+  if (numValue >= 1000000) {
+    return `${(numValue / 1000000).toFixed(1)}M`;
+  } else if (numValue >= 1000) {
+    return `${(numValue / 1000).toFixed(1)}k`; // Cambiado a .toFixed(1) para mostrar 0.8k
   }
-  return value.toString();
+  return numValue.toString();
 }
 
 // Helper function to format USD (integer if .00, otherwise up to 2 decimals)
 function formatUSD(value) {
-  const rounded = Number(value.toFixed(2));
+  const numValue = Number(value); // Asegurarse de que el valor sea un número
+  if (isNaN(numValue)) return "0";
+  const rounded = numValue.toFixed(2);
   return rounded % 1 === 0 ? rounded.toString() : rounded.toFixed(2);
 }
 
@@ -1058,25 +1062,30 @@ client.on('interactionCreate', async interaction => {
 
       const canalAdmins = await client.channels.fetch('1358361940602257601');
       if (canalAdmins && canalAdmins.isTextBased()) {
+        // Enviar el mensaje al canal de admins primero
+        const pedidoMessage = await canalAdmins.send({
+          content: `📥 **${interaction.user.tag}** placed an order (using ${currency}):\n${resumen}\n**Status:** Pending`,
+          components: [] // Enviar sin botones inicialmente para evitar problemas
+        });
+
+        // Ahora que tenemos el ID del mensaje, crear los botones
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`confirmarTotal_${userId}_${interaction.message.id}`)
+            .setCustomId(`confirmarTotal_${userId}_${pedidoMessage.id}`)
             .setLabel('✅ Confirm Full Delivery')
             .setStyle(ButtonStyle.Success),
           new ButtonBuilder()
-            .setCustomId(`confirmarParcial_${userId}_${interaction.message.id}`)
+            .setCustomId(`confirmarParcial_${userId}_${pedidoMessage.id}`)
             .setLabel('📦 Confirm Partial Delivery')
             .setStyle(ButtonStyle.Primary),
           new ButtonBuilder()
-            .setCustomId(`cancelar_${userId}_${interaction.message.id}`)
+            .setCustomId(`cancelar_${userId}_${pedidoMessage.id}`)
             .setLabel('❌ Cancel Order')
             .setStyle(ButtonStyle.Danger)
         );
 
-        const pedidoMessage = await canalAdmins.send({
-          content: `📥 **${interaction.user.tag}** placed an order (using ${currency}):\n${resumen}\n**Status:** Pending`,
-          components: [row]
-        });
+        // Editar el mensaje para agregar los botones
+        await pedidoMessage.edit({ components: [row] });
 
         pedidosPendientes.set(userId, {
           items: items.map(item => ({ producto: item.producto, cantidad: item.cantidad, currency })),
@@ -1084,6 +1093,7 @@ client.on('interactionCreate', async interaction => {
         });
       } else {
         console.error('No se pudo encontrar o acceder al canal de admins (1358361940602257601).');
+        return interaction.editReply({ content: '❌ Error: Could not access the admin channel.', flags: MessageFlags.Ephemeral });
       }
 
       carritos.delete(userId);
