@@ -201,7 +201,20 @@ async function publishProducts(catalogo) {
     return `❌ Could not find the associated channel for **${catalogoNombres[catalogo]}**.`;
   }
 
-  console.log(`📦 Publishing ${productos.length} products in ${catalogoNombres[catalogo]}`);
+  console.log(`📦 Updating ${productos.length} products in ${catalogoNombres[catalogo]}`);
+
+  // Obtener los mensajes existentes en el canal
+  const messages = await canal.messages.fetch({ limit: 100 });
+  const existingMessages = new Map();
+  messages.forEach(msg => {
+    if (msg.author.id === client.user.id && msg.embeds.length > 0) {
+      const productName = msg.embeds[0].title;
+      existingMessages.set(productName, msg);
+    }
+  });
+
+  let updatedCount = 0;
+  let newCount = 0;
 
   for (let producto of productos) {
     const embed = new EmbedBuilder()
@@ -241,35 +254,68 @@ async function publishProducts(catalogo) {
         .setDisabled(!producto.enStock || producto.precioUSD === 0)
     );
 
-    const sentMessage = await canal.send({ embeds: [embed], components: [row] });
+    const existingMessage = existingMessages.get(producto.nombre);
 
-    const updatedRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`agregar_${producto.nombre}_${sentMessage.id}`)
-        .setLabel('➕ Add to Cart')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(!producto.enStock),
-      new ButtonBuilder()
-        .setCustomId(`solicitar_${producto.nombre}_${sentMessage.id}`)
-        .setLabel('📋 Request Product')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(producto.enStock),
-      new ButtonBuilder()
-        .setCustomId(`checkout_uec_${producto.nombre}_${sentMessage.id}`)
-        .setLabel('💰 Buy with UEC')
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(!producto.enStock || producto.precioUEC === 0),
-      new ButtonBuilder()
-        .setCustomId(`checkout_usd_${producto.nombre}_${sentMessage.id}`)
-        .setLabel('💵 Buy with USD')
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(!producto.enStock || producto.precioUSD === 0)
-    );
+    if (existingMessage) {
+      // Editar el mensaje existente
+      const updatedRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`agregar_${producto.nombre}_${existingMessage.id}`)
+          .setLabel('➕ Add to Cart')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(!producto.enStock),
+        new ButtonBuilder()
+          .setCustomId(`solicitar_${producto.nombre}_${existingMessage.id}`)
+          .setLabel('📋 Request Product')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(producto.enStock),
+        new ButtonBuilder()
+          .setCustomId(`checkout_uec_${producto.nombre}_${existingMessage.id}`)
+          .setLabel('💰 Buy with UEC')
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(!producto.enStock || producto.precioUEC === 0),
+        new ButtonBuilder()
+          .setCustomId(`checkout_usd_${producto.nombre}_${existingMessage.id}`)
+          .setLabel('💵 Buy with USD')
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(!producto.enStock || producto.precioUSD === 0)
+      );
 
-    await sentMessage.edit({ components: [updatedRow] });
+      await existingMessage.edit({ embeds: [embed], components: [updatedRow] });
+      updatedCount++;
+    } else {
+      // Publicar un nuevo mensaje si el producto no tiene un mensaje existente
+      const sentMessage = await canal.send({ embeds: [embed], components: [row] });
+
+      const updatedRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`agregar_${producto.nombre}_${sentMessage.id}`)
+          .setLabel('➕ Add to Cart')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(!producto.enStock),
+        new ButtonBuilder()
+          .setCustomId(`solicitar_${producto.nombre}_${sentMessage.id}`)
+          .setLabel('📋 Request Product')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(producto.enStock),
+        new ButtonBuilder()
+          .setCustomId(`checkout_uec_${producto.nombre}_${sentMessage.id}`)
+          .setLabel('💰 Buy with UEC')
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(!producto.enStock || producto.precioUEC === 0),
+        new ButtonBuilder()
+          .setCustomId(`checkout_usd_${producto.nombre}_${sentMessage.id}`)
+          .setLabel('💵 Buy with USD')
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(!producto.enStock || producto.precioUSD === 0)
+      );
+
+      await sentMessage.edit({ components: [updatedRow] });
+      newCount++;
+    }
   }
 
-  return `✅ Catalog **${catalogoNombres[catalogo]}** published in the corresponding channel.`;
+  return `✅ Catalog **${catalogoNombres[catalogo]}** updated: ${updatedCount} products updated, ${newCount} new products published.`;
 }
 
 client.on('messageCreate', async (message) => {
@@ -886,7 +932,7 @@ client.on('interactionCreate', async interaction => {
         new ButtonBuilder()
           .setCustomId(`notificar_${producto.nombre}_${interaction.message.id}`)
           .setLabel('📢 Notify Availability')
-          .set的基本Style(ButtonStyle.Primary)
+          .setStyle(ButtonStyle.Primary)
       );
 
       const solicitudMessage = await canalAdmins.send({
